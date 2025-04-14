@@ -156,6 +156,29 @@ async def get_user(user_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.put("/users/{user_id}")
+async def update_user(user_id: int, user_data: dict, db: Session = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Update user data
+        if "username" in user_data:
+            user.username = user_data["username"]
+        if "skills" in user_data:
+            user.skills = user_data["skills"]
+        
+        db.commit()
+        return {
+            "username": user.username,
+            "email": user.email,
+            "skills": user.skills
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000) 

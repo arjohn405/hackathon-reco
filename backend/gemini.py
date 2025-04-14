@@ -115,6 +115,61 @@ class GeminiAPI:
         final_score = min(1.0, base_score + bonus)
         return final_score
 
+    def calculate_evaluation_metrics(self, hackathon_keywords: List[str], user_skills: List[str]) -> Dict[str, float]:
+        # Convert everything to lowercase and clean
+        hackathon_keywords = [k.lower().strip() for k in hackathon_keywords if k]
+        user_skills = [s.lower().strip() for s in user_skills if s]
+        
+        # Expand user skills with related terms
+        expanded_skills = set()
+        for skill in user_skills:
+            expanded_skills.add(skill)
+            for category, terms in self.tech_keywords.items():
+                if skill in terms or skill == category or any(term in skill for term in terms):
+                    expanded_skills.update(terms)
+        
+        # Calculate true positives, false positives, and false negatives
+        true_positives = len(set(hackathon_keywords) & expanded_skills)
+        false_positives = len(set(hackathon_keywords) - expanded_skills)
+        false_negatives = len(expanded_skills - set(hackathon_keywords))
+        
+        # Calculate precision
+        precision = true_positives / (true_positives + false_positives) if (true_positives + false_positives) > 0 else 0
+        
+        # Calculate recall
+        recall = true_positives / (true_positives + false_negatives) if (true_positives + false_negatives) > 0 else 0
+        
+        # Calculate F1 score
+        f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+        
+        # Calculate cosine similarity
+        # Create binary vectors for keywords and skills
+        all_terms = list(set(hackathon_keywords + list(expanded_skills)))
+        hackathon_vector = [1 if term in hackathon_keywords else 0 for term in all_terms]
+        skills_vector = [1 if term in expanded_skills else 0 for term in all_terms]
+        
+        # Calculate dot product
+        dot_product = sum(a * b for a, b in zip(hackathon_vector, skills_vector))
+        
+        # Calculate magnitudes
+        hackathon_magnitude = sum(a ** 2 for a in hackathon_vector) ** 0.5
+        skills_magnitude = sum(b ** 2 for b in skills_vector) ** 0.5
+        
+        # Calculate cosine similarity
+        cosine_similarity = dot_product / (hackathon_magnitude * skills_magnitude) if (hackathon_magnitude * skills_magnitude) > 0 else 0
+        
+        # Calculate accuracy
+        total_terms = len(all_terms)
+        accuracy = (true_positives + (total_terms - (false_positives + false_negatives))) / total_terms if total_terms > 0 else 0
+        
+        return {
+            "precision": precision,
+            "recall": recall,
+            "f1_score": f1_score,
+            "cosine_similarity": cosine_similarity,
+            "accuracy": accuracy
+        }
+
     def analyze_hackathons(self, hackathons: List[Dict], user_skills: List[str]) -> List[Dict]:
         recommendations = []
         
@@ -138,6 +193,9 @@ class GeminiAPI:
                 # Calculate match score
                 match_score = self.calculate_match_score(all_keywords, user_skills)
                 
+                # Calculate evaluation metrics
+                metrics = self.calculate_evaluation_metrics(all_keywords, user_skills)
+                
                 # Only include hackathons with some skill match
                 if match_score > 0:
                     recommendations.append({
@@ -148,7 +206,8 @@ class GeminiAPI:
                         "criteria": hackathon.get('criteria', ""),
                         "deadline": hackathon.get('deadline', "No deadline specified"),
                         "keywords": all_keywords,
-                        "match_score": match_score
+                        "match_score": match_score,
+                        "evaluation_metrics": metrics
                     })
             except Exception as e:
                 print(f"Error processing hackathon: {e}")
